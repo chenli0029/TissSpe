@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1557822968244.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "2420385922",
+    "id" : "628F9682",
+    "lastKnownWriteTime" : 1557822541,
+    "last_content_update" : 1557822541,
+    "path" : "D:/Mydata/TissSpe-master/TissSpe-master/TissSpe/R/dat_prep.R",
+    "project_path" : "R/dat_prep.R",
+    "properties" : {
+        "cursorPosition" : "123,32",
+        "scrollLine" : "0"
+    },
+    "relative_order" : 2,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

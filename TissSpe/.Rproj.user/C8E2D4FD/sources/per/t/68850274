@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1557822968933.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "648715537",
+    "id" : "68850274",
+    "lastKnownWriteTime" : 1557822541,
+    "last_content_update" : 1557822541,
+    "path" : "D:/Mydata/TissSpe-master/TissSpe-master/TissSpe/R/dataset.R",
+    "project_path" : "R/dataset.R",
+    "properties" : {
+        "cursorPosition" : "9,43",
+        "scrollLine" : "0"
+    },
+    "relative_order" : 3,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

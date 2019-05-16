@@ -1,0 +1,283 @@
+#########################
+### For AS events psi ###
+#########################
+#' Calculate specificity of psi
+#'
+#' Function to find tissue-specific AS-events for a given data.frame.
+#'
+#' Function to detect tissue-specific AS events, and return a list with 3
+#' data.frames, which contain psi values, rank values, binary pattern
+#' values and their specificty values of 10 methods: "Tau", "Gini", "Tsi", "Counts",
+#' "Ee", "Pem", "Hg", "Z", "Spm", "Ib". Rows with NA will be dropped. Of the binary
+#' pattern, all values betwwen min and max in the data.frame will be graded into n
+#' equal-width-intervals and then assign the rank 0(unexpressed) to \code{n+1}.
+#'
+#'
+#' @param df data.frame, which contain psi vaules (0-100). One column is the names of
+#' symbols, like AS events id, etc.
+#' @param n Integer. \code{n+2} equal-width-intervals be generated of all psi
+#' values. Default 10.
+#' @param min Numeric. The values under \code{min} will be graded into rank
+#' 0(unexpressed). Defaut 0.
+#' @param max Numeric. The values over \code{max} will be graded into rank
+#' \code{n+1}(highest). Default 100.
+#' @param tissues Vector of charactors, at leat length of 2. Analysed
+#' Tissues' unique identifier, and must keep away from "Tau", "Gini", "Tsi",
+#' "Counts", "Ee", "Pem", "Hg", "Z", "Spm", "Ib", "Type", "Mean" and "Max",
+#' exactly.
+#' @param identifier Charactor, length of 1. The colname of unique identifier
+#' for row symbols, like "gene_id", "AS_events", etc.
+#' @param na.del Logical. Whether NAs will be dropped. Default TRUE.
+#' @param cutoff Numeric. Values under \code{cutoff} will set to 0(unexpressed)
+#' in Specificity method "Counts".
+#' @param mingap Integer. Minimal gap of generating binary pattern, Please
+#' refer the paper. Default 3.
+#' @importFrom stats na.omit
+#' @return List of 3 data.frame. one of them contains psi values with their
+#' specificty values of 9 methods: "Tau", "Gini", "Tsi", "Counts", "Ee", "Pem",
+#' "Hg", "Z", "Spm"(named "raw"), the second contains rank values and binary
+#' index(named "rank"), the third contains binary pattern values and
+#' index binary "Ib"(named "bin").
+#' @export
+#' @examples
+#' ts_psi(demo_psi,
+#'        tissues = c("sample_A", "sample_B", "sample_C", "sample_D",
+#'                    "sample_E", "sample_F", "sample_G", "sample_H",
+#'                    "sample_I", "sample_J", "sample_K", "sample_L",
+#'                    "sample_M", "sample_N", "sample_O", "sample_P",
+#'                    "sample_Q"),
+#'                    identifier = "AS_events")
+ts_psi <- function(df,
+                  n = 10,
+                  min = 0,
+                  max = 100,
+                  tissues,
+                  identifier,
+                  na.del = TRUE,
+                  cutoff = 0.5,
+                  mingap = 3) {
+  ## format data.frame
+  if (is.vector(tissues) & length(tissues) >= 2) {
+    df <- fmt_df(df = df, tissues = tissues, identifier = identifier)
+    if (max(df) <= 1) {
+      stop("Vaules of psi should convert into 0-100!")
+    }
+  } else {
+    stop("tissues must be a vector with length at least 2!")
+  }
+
+  ## calculate mean of replicates
+  df <- rep_mean(df = df, tissues = tissues)
+
+  ## wheather remove NA
+  if (na.del == TRUE) {
+    df <- na.omit(df)
+  }
+
+  ##
+  if (!is.numeric(cutoff)) {
+    stop("cutoff should be numeric!")
+  }
+
+  df[df < cutoff] <- 0
+
+  ## binary type
+  df_list <- list(raw = df, rank = psi_seq_rank(df = df, n = n, min = min, max = max),
+                  bin = psi_seq_rank(df = df, n = n, min = min, max = max))
+
+  ## calculate tissue specificity
+  df_list[[1]] <- ts_index(df_list[[1]], cutoff = cutoff)
+  df_list[[2]] <- ts_rank(df_list[[2]], mingap = mingap)
+  df_list[[3]] <- ts_bin(df_list[[3]], mingap = mingap)
+  return(df_list)
+}
+
+
+
+
+#############################
+### For gene expression
+#############################
+#' Calculate specificity for gene expression
+#'
+#' Function to find tissue-specific gene expression for a given data.frame. For
+#' equal-density-intervals (\code{binary = "quant"}), parameters: \code{df,
+#' binary, n, min, max, tissues, identifier} must be specified, and the used
+#' values are in the range \code{(min, max)}. However, for
+#' equal-width-intervals (\code{binary = "seq"}), parameters: \code{df, binary,
+#' n, min, step, tissues, identifier} must be specified, and the used values
+#' are in the range \code{(min,  min+step*n)}.
+#'
+#' Function to detect tissue specific gene, and return a list with 3
+#' data.frames, which contain raw values, rank values, binary pattern values
+#' and their specificty values of 10 methods: "Tau", "Gini", "Tsi", "Counts",
+#' "Ee", "Pem", "Hg", "Z", "Spm", "Ib". Rows with NA will be dropped. Of the binary
+#' pattern, all values betwwen \code{min} and \code{max} in the data.frame will be
+#' graded into \code{n} equal-width-intervals or \code{n} equal-density-intervals
+#' and then assign the rank 0(unexpressed) to \code{n+1}(highest), respectively.
+#'
+#'
+#' @param df data.frame, which contain expression vaules. One column is the names
+#' of symbols, like gene_id, etc.
+#' @param binary "seq" or "quant". Binary-intervals method, "seq" refer to
+#' equal-width-intervals and "quant" refer to equal-density-intervals.
+#' @param n Integer. \code{n+2} "seq" or "quant" intervals be generated of all
+#' expression values. Default 10.
+#' @param min Numeric. The values under \code{min} will be graded into rank
+#' 0(unexpressed). Be careful when used with \code{trans}. Defaut 0.
+#' @param max Numeric. The values over \code{max} will be graded into rank
+#' \code{n+1}(highest). Default 16.
+#' @param step Numeric. Width of intervals in \code{binary} "seq" method. Be
+#' careful when used with \code{trans}.
+#' @param trans Charactor. one of "log2", "log2_QN", "QN", "none". "QN" means
+#' \code{quantile.normolize}.
+#' @param tissues Vector of charactors, at leat length of 2. Analysed Tissues'
+#' unique identifiers, and must exactly keep away from "Tau", "Gini", "Tsi",
+#' "Counts", "Ee", "Pem", "Hg", "Z", "Spm", "Ib", "Type", "Mean" and "Max".
+#' @param identifier Charactor. Length of 1. The colname of unique identifiers
+#' for records, like "gene_id", "AS_events", etc.
+#' @param na.del Logical. Whether NAs will be dropped. Default TRUE.
+#' @param cutoff Numeric. Values under \code{cutoff} will set to 0(unexpressed)
+#' in Specificity method "Counts" and \code{trans="none"}, and values under
+#' \code{log2(cutoff+1)} will set to 0(unexpressed) in log2 transformation.
+#' @param mingap Integer. Minimal gap of generating binary pattern. Default 2.
+#' @return List of 3 data.frame. one of them contains psi values with their
+#' specificty values of 9 methods: "Tau", "Gini", "Tsi", "Counts", "Ee", "Pem",
+#' "Hg", "Z", "Spm"(named "raw"), the second contains rank values and binary
+#' index(named "rank"), the third contains binary pattern values and
+#' index binary "Ib"(named "bin").
+#' @export
+#' @examples
+#' ts_expr(demo_tpm, n = 11,
+#'        tissues = c("sample_A", "sample_B", "sample_C", "sample_D",
+#'                    "sample_E", "sample_F", "sample_G", "sample_H",
+#'                    "sample_I", "sample_J", "sample_K", "sample_L",
+#'                    "sample_M", "sample_N", "sample_O", "sample_P"),
+#'                    identifier = "gene_id")
+ts_expr <- function(df,
+                    binary = "seq",
+                    n = 12,
+                    min = 0,
+                    max = 16,
+                    step = 1,
+                    trans = "log2_QN",
+                    tissues,
+                    identifier,
+                    na.del = TRUE,
+                    cutoff = 1,
+                    mingap = 2) {
+  ## format data.frame
+  if (is.vector(tissues) & length(tissues) >= 2) {
+    df <- fmt_df(df = df, tissues = tissues, identifier = identifier)
+  } else {
+    stop("tissues must be a vector with length at least 2!")
+  }
+
+  ## calculate mean of replicates
+  df <- rep_mean(df = df, tissues = tissues)
+
+  ## wheather remove NA
+  if (na.del == TRUE) {
+    df <- na.omit(df)
+  }
+
+  ##
+  if (!is.numeric(cutoff)) {
+    stop("cutoff should be numeric!")
+  }
+
+  if (trans == "log2_QN") {
+    df <- quant_norm(log2(df + 1))
+    cutoff <- log2(cutoff + 1)
+    df[df < cutoff] <- 0
+  } else if (trans == "log2") {
+    df <- log2(df + 1)
+    cutoff <- log2(cutoff + 1)
+    df[df < cutoff] <- 0
+  } else if (trans == "QN") {
+    df[df < cutoff] <- 0
+    df <- quant_norm(df)
+  } else if (trans == "none") {
+    df[df < cutoff] <- 0
+  } else {
+    stop("Value of trans error!")
+  }
+
+  ## binary type
+  if (binary == "seq") {
+    df_list <- list(raw = df, rank = expr_seq_rank(df = df, n = n, min = min, step = step),
+                    bin= expr_seq_rank(df = df, n = n, min = min, step = step))
+  } else if (binary == "quant") {
+    df_list <- list(raw = df, rank = expr_quant_rank(df = df, n = n, min = min, max = max),
+                    bin= expr_quant_rank(df = df, n = n, min = min, max = max))
+  } else {
+    stop("binary type error!")
+  }
+
+  ## calculate tissue specificity
+  df_list[[1]] <- ts_index(df_list[[1]], cutoff = cutoff)
+  df_list[[2]] <- ts_rank(df_list[[2]], mingap = mingap)
+  df_list[[3]] <- ts_bin(df_list[[3]], mingap = mingap)
+  return(df_list)
+}
+
+####################
+####################
+#' Get a tissue-specific gene subset by Ib and subtissues.
+#'
+#' Function to get a gene subset by Ib and subtissues in which genes are overexpressed,
+#' and return a list with 2 data.frames, which contain raw values(or psi), rank values,
+#' binary index, binary pattern values and their specificty values of 9 methods: "Tau",
+#' "Gini", "Tsi", "Counts", "Ee", "Pem", "Hg", "Z", "Spm".
+#'
+#' @param lst List of 3 data.frame. one of them contains raw values(or psi values
+#' with their specificty values of 9 methods: "Tau", "Gini", "Tsi", "Counts", "Ee",
+#' "Pem", "Hg", "Z", "Spm"(named "raw"), the second contains rank values and binary
+#' index(named "rank"), the third contains binary pattern values and index binary "Ib"
+#' (named "bin"), which were generated from \code{ts_psi} or \code{ts_expr}.
+#' @param Ib Integer. Cutoff of binary index, work with \code{dat_type}="rank".
+#' @param subtissues a vector. The elements including in colnames of data.frame in lst.
+#' The length of vector <= Ib.
+#' @return a list with 2 data.frames. one of them contains raw values(or psi values
+#' with their specificty values of 9 methods: "Tau", "Gini", "Tsi", "Counts", "Ee",
+#' "Pem", "Hg", "Z", "Spm"(named "rawgene"), the second contains rank values, binary
+#' index and Type(named "rankgene").
+#' @export
+#' @examples
+#' res<-ts_expr(demo_tpm, n = 11,
+#'        tissues = c("sample_A", "sample_B", "sample_C", "sample_D",
+#'                    "sample_E", "sample_F", "sample_G", "sample_H",
+#'                    "sample_I", "sample_J", "sample_K", "sample_L",
+#'                    "sample_M", "sample_N", "sample_O", "sample_P"),
+#'                    identifier = "gene_id")
+#' ts_gene(res, Ib=2, subtissues=c("sample_A", "sample_B"))
+ts_gene <- function(lst,
+                    Ib=1,
+                    subtissues){
+  if (!is.list(lst) | !(length(names(lst)) == 3)) {
+    stop("lst maybe fault input data!")
+  }
+  if (any(!(subtissues %in% colnames(lst$bin)[1:(ncol(lst$bin)-2)]))){
+    stop("subtissues not exist in data frame")
+  }
+  rankgene = subset(lst$bin,Ib==Ib)
+  if (Ib < (ncol(lst$bin)-2)/2){
+    for (i in length(subtissues)){
+      rankgene=subset(rankgene,rankgene[,subtissues][i]==1)
+    }
+  } else{
+    for (i in length(subtissues)){
+      rankgene=subset(rankgene,rankgene[,subtissues][i]==0)
+    }
+  }
+  if (nrow(rankgene) == 0){
+    print("No genes meet the criteria")
+  } else{
+    rawgene = lst$raw[rownames(rankgene),]
+    rankgene = lst$rank[rownames(rankgene),]
+    df_list=list(rawgene,rankgene)
+  }
+  return(df_list)
+}
+
+
